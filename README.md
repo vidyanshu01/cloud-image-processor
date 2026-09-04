@@ -576,7 +576,7 @@ http://127.0.0.1:8000/redoc
 ## 1. Clone repository
 
 ```bash
-git clone YOUR_GITHUB_REPOSITORY_URL
+git clone https://github.com/vidyanshu01/cloud-image-processor.git
 cd CloudImage
 ```
 
