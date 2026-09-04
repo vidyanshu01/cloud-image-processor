@@ -1,905 +1,1069 @@
-I recommend building it as a Cloudinary-like Image Processing API using:
+# ☁️ CloudImage — Cloud Image Processing Service
 
-Python 3.12+
-FastAPI — REST API
-PostgreSQL — users + image metadata
-SQLAlchemy 2.0 — ORM
-JWT + OAuth2 — authentication
-Argon2/Bcrypt — password hashing
-Pillow — image processing
-Local/S3-compatible storage — image files
-Redis — caching/rate limiting later
-Docker — deployment
-Pytest — testing
-1. Final Architecture
-                    ┌─────────────────────┐
-                    │      Client         │
-                    │ Web / Mobile / API  │
-                    └──────────┬──────────┘
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │      FastAPI        │
-                    │      REST API       │
-                    └──────────┬──────────┘
-                               │
-              ┌────────────────┼────────────────┐
-              │                │                │
-              ▼                ▼                ▼
-        Authentication    Image Service    Transformation
-        JWT + Password    Upload/Retrieve   Pillow
-              │                │                │
-              └────────────────┼────────────────┘
-                               │
-              ┌────────────────┴────────────────┐
-              ▼                                 ▼
-       PostgreSQL Database                Image Storage
-       Users + Metadata                Local / S3 / R2
+> A production-style, secure, API-first image processing platform built with **FastAPI, PostgreSQL, AWS S3, JWT authentication, Pillow, SQLAlchemy, and Alembic**.
 
+CloudImage allows authenticated users to upload images, securely store them in private AWS S3 storage, perform image transformations, retrieve transformed files through temporary presigned URLs, and manage their image library through a RESTful API.
 
+---
 
-2. Project Structure
+## 🚀 Features
 
-image-processing-service/
+### 🔐 Authentication & Security
+
+- User registration and login
+- JWT-based authentication
+- Argon2 password hashing
+- Protected image APIs
+- User-specific resource authorization
+- Generic authentication error messages
+- Private AWS S3 bucket
+- Temporary S3 presigned URLs
+- File size validation
+- MIME type validation
+- Image integrity validation
+- Image dimension limits
+- Maximum pixel-count protection
+- Environment-based secrets
+- Sensitive credentials excluded from Git
+
+### 🖼️ Image Management
+
+- Upload images
+- Retrieve image metadata
+- List user images
+- Pagination
+- Search by filename
+- Filter by image format
+- Sort by:
+  - Newest
+  - Oldest
+  - Largest
+  - Smallest
+- Generate secure image access URLs
+- Delete images
+- Delete associated transformations
+
+### 🎨 Image Transformations
+
+Supported transformations include:
+
+- Resize
+- Crop
+- Rotate
+- Flip
+- Mirror
+- Grayscale
+- Sepia
+- Watermark
+- Format conversion
+- Quality control
+
+Supported formats:
+
+- JPEG
+- PNG
+- WebP
+- GIF
+
+### ⚡ Transformation Caching
+
+CloudImage generates a deterministic transformation hash using **SHA3-256**.
+
+If the same transformation is requested again:
+
+```text
+User Request
+     ↓
+Transformation Hash
+     ↓
+Database Cache Lookup
+     ↓
+ ┌───────────────┐
+ │ Cached Result │──→ Return existing result
+ └───────────────┘
+          │
+          ↓ cache miss
+   Process Image
+          ↓
+      Upload S3
+          ↓
+       Save DB
+```
+
+This avoids unnecessary image processing and duplicate S3 uploads.
+
+### ☁️ AWS S3 Storage
+
+Images are stored in a private AWS S3 bucket.
+
+Storage structure:
+
+```text
+users/
+├── {user_id}/
+│   ├── images/
+│   │   ├── <uuid>.jpg
+│   │   ├── <uuid>.png
+│   │   └── ...
+│   │
+│   └── transformations/
+│       ├── <uuid>.jpg
+│       ├── <uuid>.webp
+│       └── ...
+```
+
+The application does **not** expose the S3 bucket publicly.
+
+Instead, it generates temporary presigned URLs:
+
+```text
+Private S3 Object
+       ↓
+FastAPI
+       ↓
+Presigned URL
+       ↓
+Client
+```
+
+---
+
+# 🏗️ System Architecture
+
+```text
+                         ┌─────────────────────┐
+                         │       Client        │
+                         │ Swagger / Frontend  │
+                         └──────────┬──────────┘
+                                    │
+                                    │ HTTPS / REST API
+                                    ▼
+                         ┌─────────────────────┐
+                         │       FastAPI       │
+                         │     API Layer       │
+                         └──────────┬──────────┘
+                                    │
+                    ┌───────────────┼────────────────┐
+                    │               │                │
+                    ▼               ▼                ▼
+             ┌────────────┐  ┌────────────┐  ┌──────────────┐
+             │   Auth     │  │   Image    │  │Transformation│
+             │  Service   │  │  Service   │  │   Service    │
+             └─────┬──────┘  └─────┬──────┘  └──────┬───────┘
+                   │               │                │
+                   │               │                │
+                   ▼               ▼                ▼
+             ┌─────────────────────────────────────────────┐
+             │                  PostgreSQL                  │
+             │ Users / Images / Transformations            │
+             └──────────────────────┬──────────────────────┘
+                                    │
+                                    │
+                                    ▼
+                         ┌─────────────────────┐
+                         │       AWS S3        │
+                         │   Private Objects   │
+                         └─────────────────────┘
+```
+
+---
+
+# 🧰 Tech Stack
+
+| Category | Technology |
+|---|---|
+| Language | Python |
+| API Framework | FastAPI |
+| Validation | Pydantic |
+| Database | PostgreSQL |
+| ORM | SQLAlchemy |
+| Database Migration | Alembic |
+| Image Processing | Pillow |
+| Object Storage | AWS S3 |
+| AWS SDK | Boto3 |
+| Authentication | JWT |
+| Password Hashing | Argon2 |
+| Configuration | Pydantic Settings |
+| Logging | Python Logging |
+| API Documentation | Swagger / OpenAPI |
+| Testing | Pytest |
+| Version Control | Git / GitHub |
+
+---
+
+# 📁 Project Structure
+
+```text
+CloudImage/
+│
+├── alembic/
+│   ├── versions/
+│   ├── env.py
+│   └── script.py.mako
 │
 ├── app/
-│   ├── __init__.py
-│   ├── main.py
-│   │
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── config.py
-│   │   ├── security.py
-│   │   └── database.py
-│   │
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── user.py
-│   │   └── image.py
-│   │
-│   ├── schemas/
-│   │   ├── __init__.py
-│   │   ├── auth.py
-│   │   ├── user.py
-│   │   └── image.py
 │   │
 │   ├── api/
-│   │   ├── __init__.py
 │   │   ├── auth.py
-│   │   └── images.py
+│   │   ├── dependencies.py
+│   │   ├── health.py
+│   │   └── image.py
+│   │
+│   ├── core/
+│   │   ├── config.py
+│   │   ├── constants.py
+│   │   ├── database.py
+│   │   ├── logging.py
+│   │   └── security.py
+│   │
+│   ├── models/
+│   │   ├── user.py
+│   │   ├── image.py
+│   │   └── transformation.py
+│   │
+│   ├── schemas/
+│   │   ├── auth.py
+│   │   ├── image.py
+│   │   ├── image_query.py
+│   │   └── transformation.py
 │   │
 │   ├── services/
-│   │   ├── __init__.py
-│   │   ├── auth_service.py
+│   │   ├── file_service.py
 │   │   ├── image_service.py
+│   │   ├── image_validator.py
 │   │   └── transformation_service.py
 │   │
-│   ├── utils/
+│   ├── storage/
 │   │   ├── __init__.py
-│   │   ├── file_utils.py
-│   │   └── image_utils.py
+│   │   └── s3_storage.py
 │   │
-│   └── storage/
-│       ├── __init__.py
-│       └── local_storage.py
+│   ├── utils/
+│   │   ├── cache_utils.py
+│   │   ├── file_utils.py
+│   │   ├── hash_utils.py
+│   │   ├── image_utils.py
+│   │   └── storage_key.py
+│   │
+│   └── main.py
 │
-├── tests/
-│   ├── __init__.py
-│   ├── test_auth.py
-│   ├── test_images.py
-│   └── test_transformations.py
-│
-├── uploads/
-│   ├── originals/
-│   └── transformed/
-│
-├── .env
 ├── .env.example
 ├── .gitignore
+├── alembic.ini
 ├── requirements.txt
-├── Dockerfile
-├── docker-compose.yml
 └── README.md
+```
 
-This gives you a much more professional backend architecture.
+---
 
-3. API Design
+# 🔄 Image Processing Pipeline
 
-Your final API can look like this:
+## Upload Flow
 
-Method	Endpoint	Purpose
-POST	/api/v1/auth/register	Register
-POST	/api/v1/auth/login	Login
-GET	/api/v1/auth/me	Current user
-POST	/api/v1/images	Upload image
-GET	/api/v1/images	List images
-GET	/api/v1/images/{id}	Get image
-DELETE	/api/v1/images/{id}	Delete image
-POST	/api/v1/images/{id}/transform	Transform image
-GET	/api/v1/images/{id}/download	Download image
-4. Authentication
-
-For registration:
-
-POST /api/v1/auth/register
-
-Request:
-
-{
-    "username": "vidyanshu",
-    "email": "user@example.com",
-    "password": "StrongPassword123"
-}
-
-Response:
-
-{
-    "user": {
-        "id": 1,
-        "username": "vidyanshu",
-        "email": "user@example.com"
-    },
-    "access_token": "eyJhbGciOiJIUzI1NiIs..."
-}
-
-Password should never be stored directly.
-
-Instead:
-
-Password
-   ↓
-Argon2/Bcrypt
-   ↓
-Password Hash
-   ↓
-PostgreSQL
-
-JWT:
-
-username/password
-       ↓
-authenticate
-       ↓
-JWT Access Token
-       ↓
-Authorization: Bearer <token>
-5. Database Design
-Users
-users
---------------------------------
-id
-username
-email
-password_hash
-created_at
-updated_at
-Images
-images
---------------------------------
-id
-user_id
-original_filename
-stored_filename
-storage_path
-mime_type
-format
-width
-height
-file_size
-created_at
-updated_at
-
-Relationship:
-
-User
- │
- ├── Image
- ├── Image
- ├── Image
- └── Image
-
-This is important because every user should only be able to access their own images.
-
-6. Upload Flow
-
-When:
-
-POST /api/v1/images
-Authorization: Bearer JWT
-Content-Type: multipart/form-data
-
-is called:
-
+```text
 Client
   │
-  │ image.jpg
+  │ Upload Image
   ▼
 FastAPI
   │
-  ├── Validate JWT
+  ├── File Size Validation
   │
-  ├── Validate file type
+  ├── MIME Type Validation
   │
-  ├── Validate file size
+  ├── Pillow Image Validation
   │
-  ├── Generate UUID
+  ├── Dimension Validation
   │
-  ├── Read image metadata
+  ├── Pixel Count Validation
   │
-  ├── Save original
+  ▼
+Temporary File
   │
-  └── Save metadata to DB
-          │
-          ▼
-       PostgreSQL
+  ▼
+AWS S3
+  │
+  ▼
+PostgreSQL
+  │
+  ▼
+API Response
+```
 
-Example generated filename:
+---
 
-8c9d5c9e-6c8c-4e32-8c76-0d7e3f9c7c21.jpg
+# 🎨 Transformation Pipeline
 
-Don't trust the original filename for storage.
-
-7. Supported Image Formats
-
-Start with:
-
-JPEG
-PNG
-WEBP
-GIF
-BMP
-TIFF
-
-For security, reject arbitrary files.
-
-For example:
-
-ALLOWED_IMAGE_TYPES = {
-    "image/jpeg",
-    "image/png",
-    "image/webp",
-    "image/gif",
-    "image/bmp",
-    "image/tiff",
-}
-
-Also validate the actual image using Pillow rather than trusting only the MIME type.
-
-8. Transformation API
-
-Request:
-
-POST /api/v1/images/1/transform
-{
-    "resize": {
-        "width": 800,
-        "height": 600
-    },
-    "crop": {
-        "width": 600,
-        "height": 400,
-        "x": 50,
-        "y": 50
-    },
-    "rotate": 90,
-    "flip": true,
-    "mirror": false,
-    "format": "webp",
-    "quality": 80,
-    "filters": {
-        "grayscale": true,
-        "sepia": false
-    }
-}
-
-You don't need to send every operation.
-
-For example:
-
-{
-    "resize": {
-        "width": 500,
-        "height": 500
-    }
-}
-
-or:
-
-{
-    "rotate": 90
-}
-
-or:
-
-{
-    "format": "webp"
-}
-9. Transformation Pipeline
-
-The most important design decision is to process transformations sequentially.
-
+```text
 Original Image
       │
       ▼
-   Resize
+TransformationRequest
       │
       ▼
-    Crop
+Generate SHA3-256 Hash
       │
       ▼
-   Rotate
+Check Database Cache
       │
-      ▼
-    Flip
-      │
-      ▼
-   Mirror
-      │
-      ▼
-   Filters
-      │
-      ▼
- Compression
-      │
-      ▼
- Format Conversion
-      │
-      ▼
-Transformed Image
+ ┌────┴─────┐
+ │          │
+Hit        Miss
+ │          │
+ ▼          ▼
+Return    Download
+Existing    from S3
+Result       │
+             ▼
+      Apply Transformations
+             │
+             ▼
+       Encode Output
+             │
+             ▼
+        Upload to S3
+             │
+             ▼
+       Save Metadata
+             │
+             ▼
+       Return Result
+```
 
-For example:
+---
 
-image = Image.open(original_path)
+# 🗄️ Database Design
 
-image = resize(image)
-image = crop(image)
-image = rotate(image)
-image = flip(image)
-image = apply_filters(image)
+## Users
 
-image.save(
-    output_path,
-    format="WEBP",
-    quality=80
-)
-10. Pillow Transformation Examples
-Resize
-image = image.resize((800, 600))
-Crop
-image = image.crop((x, y, x + width, y + height))
-Rotate
-image = image.rotate(
-    90,
-    expand=True
-)
-Flip
-from PIL import ImageOps
+```text
+users
+├── id
+├── username
+├── email
+├── password_hash
+└── created_at
+```
 
-image = ImageOps.flip(image)
-Mirror
-image = ImageOps.mirror(image)
-Grayscale
-image = ImageOps.grayscale(image)
-Sepia
+## Images
 
-You can create a custom sepia filter using Pillow's pixel operations or a color matrix.
+```text
+images
+├── id
+├── user_id
+├── original_filename
+├── storage_key
+├── mime_type
+├── format
+├── width
+├── height
+├── file_size
+├── created_at
+└── updated_at
+```
 
-Format conversion
-image.save(
-    output_path,
-    format="WEBP",
-    quality=80
-)
-11. Important: Don't Modify the Original
+## Image Transformations
 
-A professional image service should preserve:
+```text
+image_transformations
+├── id
+├── image_id
+├── user_id
+├── transformation_hash
+├── storage_key
+├── format
+├── mime_type
+├── width
+├── height
+├── file_size
+└── created_at
+```
 
-Original
-   │
-   ├── transformed_1.webp
-   ├── transformed_2.jpg
-   ├── transformed_3.png
-   └── transformed_4.webp
+Relationship:
 
-Instead of:
+```text
+User
+ │
+ └──< Images
+        │
+        └──< Transformations
+```
 
-Original → resize → rotate → overwrite
+---
 
-This means users can always return to the original.
+# 🔐 AWS S3 Security
 
-12. Transformation Cache
+The S3 bucket is configured as **private**.
 
-This is where you can make the project more impressive.
+The application's IAM user requires only object-level permissions:
 
-Suppose a user requests:
+```text
+s3:PutObject
+s3:GetObject
+s3:DeleteObject
+```
 
-image 123
-width=500
-height=500
-format=webp
-quality=80
+Object access:
 
-Generate a transformation hash:
+```text
+arn:aws:s3:::YOUR_BUCKET/*
+```
 
-SHA256(
-    image_id +
-    transformation_parameters
-)
+`ListBucket` permission is not required because image listing is handled through PostgreSQL.
+
+### Security principle
+
+```text
+Public S3 Bucket
+      ❌
+
+Private S3 Bucket
+      ✅
+          │
+          ▼
+FastAPI generates temporary
+presigned URL
+          │
+          ▼
+Client accesses object
+```
+
+---
+
+# 🔑 Authentication
+
+CloudImage uses JWT Bearer authentication.
+
+```text
+Register
+   ↓
+Argon2 Password Hash
+   ↓
+PostgreSQL
+```
+
+Login:
+
+```text
+Username + Password
+       ↓
+Verify Argon2 Hash
+       ↓
+Generate JWT
+       ↓
+Client
+```
+
+Protected request:
+
+```http
+Authorization: Bearer <access_token>
+```
+
+JWT expiration is configurable through environment variables.
+
+---
+
+# 🛡️ Image Validation
+
+Before an image is stored, CloudImage validates:
+
+### File size
+
+Default maximum:
+
+```text
+10 MB
+```
+
+### MIME type
+
+Allowed:
+
+```text
+image/jpeg
+image/png
+image/webp
+image/gif
+```
+
+### Image integrity
+
+Pillow verifies that the file is a valid image.
+
+### Dimensions
+
+Maximum:
+
+```text
+10000 × 10000
+```
+
+### Pixel count
+
+Maximum:
+
+```text
+50,000,000 pixels
+```
+
+This provides multiple layers of protection rather than trusting only the uploaded filename or MIME type.
+
+---
+
+# 🌐 API Endpoints
+
+Base URL:
+
+```text
+/api/v1
+```
+
+## Health
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/health` | Application health |
+| GET | `/health/db` | Database health |
+
+## Authentication
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/auth/register` | Register user |
+| POST | `/auth/login` | Login |
+| GET | `/auth/me` | Current user |
+
+## Images
+
+| Method | Endpoint | Description |
+|---|---|---|
+| POST | `/images` | Upload image |
+| GET | `/images` | List images |
+| GET | `/images/{image_id}` | Get image metadata |
+| GET | `/images/{image_id}/file` | Generate original file URL |
+| GET | `/images/{image_id}/download` | Generate download URL |
+| POST | `/images/{image_id}/transform` | Transform image |
+| DELETE | `/images/{image_id}` | Delete image |
+
+## Transformations
+
+| Method | Endpoint | Description |
+|---|---|---|
+| GET | `/images/transformations/{transformation_id}/file` | Generate transformed image URL |
+
+---
+
+# 📚 API Documentation
+
+When running locally:
+
+### Swagger UI
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+### ReDoc
+
+```text
+http://127.0.0.1:8000/redoc
+```
+
+---
+
+# ⚙️ Local Setup
+
+## 1. Clone repository
+
+```bash
+git clone YOUR_GITHUB_REPOSITORY_URL
+cd CloudImage
+```
+
+## 2. Create virtual environment
+
+Windows:
+
+```bash
+python -m venv .venv
+.venv\Scripts\activate
+```
+
+Linux/macOS:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+## 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+# 🔧 Environment Configuration
+
+Create:
+
+```text
+.env
+```
+
+Use `.env.example` as the template.
 
 Example:
 
-abc9287d....webp
+```env
+APP_NAME=Cloud Image Processing Service
+APP_VERSION=1.0.0
+DEBUG=True
 
-Next time the same transformation is requested:
+DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5432/image_service
 
-Request
-  ↓
-Check cache
-  ↓
-Exists?
- ├── YES → return existing image
- │
- └── NO
-       ↓
-   Process image
-       ↓
-   Save result
-
-This avoids unnecessary CPU usage.
-
-13. Pagination
-
-Your requirement:
-
-GET /api/v1/images?page=1&limit=10
-
-Response:
-
-{
-    "page": 1,
-    "limit": 10,
-    "total": 43,
-    "pages": 5,
-    "items": [
-        {
-            "id": 1,
-            "filename": "photo.jpg",
-            "width": 1920,
-            "height": 1080,
-            "format": "JPEG",
-            "size": 245678
-        }
-    ]
-}
-
-Don't return all images at once.
-
-14. Security
-
-This project becomes much stronger if you implement:
-
-Authentication
-JWT
-+
-Password Hashing
-Authorization
-
-User A:
-
-GET /images/1
-
-should not be able to access User B's image.
-
-Always query something conceptually equivalent to:
-
-image_id = requested_id
-AND
-user_id = current_user.id
-File validation
-
-Limit:
-
-Maximum file size
-Allowed MIME types
-Allowed extensions
-Image dimensions
-
-For example:
-
-Maximum file size = 10 MB
-Maximum width = 10,000
-Maximum height = 10,000
-15. Rate Limiting
-
-Especially protect:
-
-POST /images/{id}/transform
-
-because image processing consumes CPU/RAM.
-
-For example:
-
-100 requests/hour/user
-
-or a more appropriate limit based on your deployment.
-
-Redis can later handle this.
-
-16. Storage
-Phase 1 — Local
-
-For development:
-
-uploads/
-├── originals/
-└── transformed/
-Phase 2 — Cloud
-
-Move to:
-
-AWS S3
-Cloudflare R2
-Google Cloud Storage
-
-Architecture remains:
-
-FastAPI
-   │
-   ▼
-StorageService
-   │
-   ├── LocalStorage
-   │
-   └── S3Storage
-
-This is a good use of the Repository/Strategy pattern.
-
-17. Environment Variables
-
-.env
-
-DATABASE_URL=postgresql+psycopg://postgres:password@localhost:5432/image_service
-
-JWT_SECRET_KEY=change-this-secret
+JWT_SECRET_KEY=YOUR_SECRET_KEY
 JWT_ALGORITHM=HS256
 ACCESS_TOKEN_EXPIRE_MINUTES=30
 
 MAX_FILE_SIZE_MB=10
 
-STORAGE_TYPE=local
-UPLOAD_DIR=uploads
+AWS_ACCESS_KEY_ID=YOUR_AWS_ACCESS_KEY
+AWS_SECRET_ACCESS_KEY=YOUR_AWS_SECRET_KEY
+AWS_REGION=ap-south-1
+AWS_S3_BUCKET_NAME=YOUR_BUCKET_NAME
+```
 
-Never commit .env.
+> **Never commit `.env` or AWS credentials to GitHub.**
 
-18. requirements.txt
+---
 
-A good initial version:
+# 🗃️ Database Setup
 
-fastapi
-uvicorn[standard]
+Create the PostgreSQL database:
 
-sqlalchemy
-psycopg[binary]
+```text
+image_service
+```
 
-pydantic
-pydantic-settings
+Run migrations:
 
-python-multipart
+```bash
+alembic upgrade head
+```
 
-python-jose[cryptography]
-passlib[argon2]
+Check migration status:
 
-Pillow
+```bash
+alembic current
+```
 
-python-dotenv
+Check for schema differences:
 
-alembic
+```bash
+alembic check
+```
 
-pytest
-pytest-asyncio
-httpx
+Expected:
 
-Later:
+```text
+No new upgrade operations detected.
+```
 
-redis
-boto3
-slowapi
+---
 
-for caching, cloud storage and rate limiting.
+# ▶️ Run Application
 
-19. Docker Architecture
+Start FastAPI:
 
-Eventually:
+```bash
+uvicorn app.main:app --reload
+```
 
-                Docker Compose
+Application:
+
+```text
+http://127.0.0.1:8000
+```
+
+Swagger:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+---
+
+# 🧪 Testing
+
+The API was regression-tested across the complete application flow.
+
+Test coverage includes:
+
+### Health
+
+- Application health
+- Database health
+
+### Authentication
+
+- User registration
+- Duplicate registration
+- Login
+- Current user
+- Invalid credentials
+- Invalid JWT
+
+### Image Upload
+
+- JPEG
+- PNG
+- WebP
+- File size validation
+- MIME validation
+- Corrupted images
+- Invalid uploads
+
+### Image Management
+
+- Get image
+- List images
+- Pagination
+- Search
+- Format filtering
+- Sorting
+- File URL generation
+- Download URL generation
+- Delete
+
+### Transformations
+
+- Resize
+- Crop
+- Rotate
+- Flip
+- Mirror
+- Grayscale
+- Sepia
+- Watermark
+- Format conversion
+- Quality settings
+
+### Transformation Cache
+
+- Cache miss
+- Transformation processing
+- Cache hit
+- Existing transformation reuse
+
+### Authorization
+
+Cross-user access was tested to ensure users cannot access another user's:
+
+- Image metadata
+- Original image
+- Transformations
+- Files
+- Delete operations
+
+### Storage
+
+- S3 upload
+- S3 download
+- S3 deletion
+- Presigned URL generation
+- Database/S3 cleanup behavior
+
+---
+
+# 📊 API Response Strategy
+
+File endpoints return JSON instead of redirecting directly to S3.
+
+Example:
+
+```json
+{
+  "url": "temporary-presigned-url",
+  "mime_type": "image/png",
+  "expires_in": 3600
+}
+```
+
+This keeps the API behavior predictable for clients and Swagger/OpenAPI testing.
+
+---
+
+# 📝 Logging
+
+Application logging is implemented using Python's standard logging framework.
+
+Log format:
+
+```text
+timestamp | logger | filename | level | message
+```
+
+Example:
+
+```text
+2026-09-04 12:30:20 | app | image_service.py | INFO | Image upload started
+```
+
+Logs are written to:
+
+```text
+app/logs/
+```
+
+Log files are excluded from Git through `.gitignore`.
+
+Sensitive information such as:
+
+- Passwords
+- JWT tokens
+- AWS secret keys
+- Presigned URLs
+
+is not intentionally logged.
+
+---
+
+# 🔄 Database Migrations
+
+Alembic is used instead of directly calling SQLAlchemy `create_all()`.
+
+Create migration:
+
+```bash
+alembic revision --autogenerate -m "description"
+```
+
+Apply:
+
+```bash
+alembic upgrade head
+```
+
+Rollback:
+
+```bash
+alembic downgrade -1
+```
+
+Check:
+
+```bash
+alembic check
+```
+
+---
+
+# 🔒 Security Design
+
+CloudImage follows several security principles:
+
+```text
+                Security Layers
+
                      │
-       ┌─────────────┼─────────────┐
-       │             │             │
-       ▼             ▼             ▼
-    FastAPI      PostgreSQL      Redis
-       │
-       │
-       ▼
-    Storage
+        ┌────────────┴────────────┐
+        ▼                         ▼
+ Authentication              Authorization
+        │                         │
+        ▼                         ▼
+       JWT                 User ownership checks
+        │                         │
+        └────────────┬────────────┘
+                     ▼
+              Input Validation
+                     │
+                     ▼
+             Image Validation
+                     │
+                     ▼
+              Private S3
+                     │
+                     ▼
+          Temporary Presigned URLs
+```
 
-docker-compose.yml:
+Additional controls:
 
-fastapi
-postgres
-redis
+- Environment-based configuration
+- Password hashing with Argon2
+- Private S3 bucket
+- Least-privilege IAM policy
+- File size limits
+- Image dimension limits
+- Pixel-count limits
+- Ownership validation
+- Database transactions
+- S3 cleanup on database failure
 
-This will make the project significantly stronger for your resume.
+---
 
-20. Development Roadmap
+# 🧠 Engineering Highlights
 
-I would build this in 8 stages rather than trying to implement everything simultaneously.
+This project demonstrates practical backend and cloud engineering concepts:
 
-Stage 1 — FastAPI foundation
+### API Architecture
 
-Learn/build:
+```text
+Router
+  ↓
+Service
+  ↓
+Model / Storage
+```
 
+Business logic is kept outside the API router wherever possible.
+
+### Separation of Concerns
+
+```text
+API
+ ↓
+Services
+ ↓
+Storage / Database
+```
+
+### Cloud Storage
+
+Uses AWS S3 rather than storing uploaded files directly on the application server.
+
+### Database-backed Metadata
+
+S3 stores binary objects while PostgreSQL stores searchable metadata.
+
+### Deterministic Caching
+
+Transformation requests are converted into a stable hash so identical operations can reuse previous results.
+
+### Failure Cleanup
+
+If an S3 upload succeeds but the database transaction fails, the uploaded S3 object is removed to avoid orphaned objects.
+
+---
+
+# 📈 Version History
+
+The project is developed using semantic versioning.
+
+```text
+v0.1.0
+Project foundation
+
+v0.2.0
+Authentication and user management
+
+v0.3.0
+Image upload and validation
+
+v0.4.0
+AWS S3 storage integration
+
+v0.5.0
+Image transformation pipeline
+
+v0.6.0
+Image management and transformation caching
+
+v0.7.0
+API regression and security validation
+
+v1.0.0
+Production-ready backend
+```
+
+---
+
+# 🛣️ Roadmap
+
+Future development:
+
+- [ ] Automated pytest test suite
+- [ ] Docker containerization
+- [ ] Docker Compose development environment
+- [ ] GitHub Actions CI/CD
+- [ ] API rate limiting
+- [ ] Global exception handling
+- [ ] Redis caching
+- [ ] Background image processing
+- [ ] Celery task queue
+- [ ] Image optimization pipeline
+- [ ] React frontend
+- [ ] Image gallery dashboard
+- [ ] Before/after transformation preview
+- [ ] AWS cloud deployment
+- [ ] Monitoring and metrics
+- [ ] Production observability
+- [ ] Custom domain and HTTPS
+
+---
+
+# 🎯 Project Goals
+
+CloudImage was designed to demonstrate how a real-world image processing backend can be built using:
+
+```text
+Python
++
 FastAPI
-Routes
-Request/Response
-Pydantic
-Dependency Injection
-Swagger
-
-Endpoints:
-
-GET /
-GET /health
-Stage 2 — Database
-
-Implement:
-
++
 PostgreSQL
++
+AWS S3
++
+JWT
++
+Pillow
++
 SQLAlchemy
++
 Alembic
-User model
-Image model
-Relationships
-Stage 3 — Authentication
+```
 
-Implement:
+The focus is not only on image manipulation, but also on:
 
-/register
-/login
-/me
-JWT
-Password hashing
-Authentication dependency
-Stage 4 — Image Upload
+- API architecture
+- Cloud storage
+- Authentication
+- Authorization
+- Database design
+- Caching
+- Security
+- Error handling
+- Logging
+- Testing
+- Production readiness
 
-Implement:
+---
 
-POST /images
-GET /images
-GET /images/{id}
-DELETE /images/{id}
+# 👨‍💻 Author
 
-Add:
+**Vidyanshu Kushawaha**
 
-file validation
-metadata extraction
-UUID filenames
-storage service
-Stage 5 — Image Processing
+B.Tech CSE — Data Science
 
-Implement:
+Interested in:
 
-resize
-crop
-rotate
-flip
-mirror
-grayscale
-sepia
-compression
-format conversion
-watermark
-Stage 6 — Optimization
+- Machine Learning Engineering
+- Backend Engineering
+- Data Science
+- Cloud Engineering
+- MLOps
 
-Add:
+---
 
-transformation cache
-Redis
-rate limiting
-efficient database queries
-pagination
-Stage 7 — Production
+# ⭐ If You Find This Project Useful
 
-Add:
+Consider giving the repository a ⭐ on GitHub.
 
-Docker
-Docker Compose
-PostgreSQL
-Redis
-S3/R2
-environment configuration
-logging
-exception handling
-Stage 8 — Testing
+---
 
-Write tests for:
+## 📄 License
 
-Registration
-Login
-JWT
-Upload
-Authorization
-Image transformation
-Pagination
-Invalid files
-Large files
-404 cases
-
-Target:
-
-80%+ test coverage
-21. Example Final Request Flow
-
-A user uploads:
-
-car.jpg
-
-Then requests:
-
-{
-    "resize": {
-        "width": 800,
-        "height": 600
-    },
-    "rotate": 90,
-    "filters": {
-        "grayscale": true
-    },
-    "format": "webp",
-    "quality": 75
-}
-
-System:
-
-             car.jpg
-                │
-                ▼
-          Authenticate JWT
-                │
-                ▼
-          Check ownership
-                │
-                ▼
-          Load original
-                │
-                ▼
-             Resize
-                │
-                ▼
-             Rotate
-                │
-                ▼
-           Grayscale
-                │
-                ▼
-            Compress
-                │
-                ▼
-          Convert WEBP
-                │
-                ▼
-          Save transformed
-                │
-                ▼
-          Save metadata
-                │
-                ▼
-        Return image URL
-
-Response:
-
-{
-    "id": 27,
-    "original_image_id": 12,
-    "url": "/media/transformed/27.webp",
-    "format": "WEBP",
-    "width": 800,
-    "height": 600,
-    "size": 58321
-}
-22. What Makes This Resume-Worthy
-
-Don't just describe it as:
-
-"Created an image upload API using FastAPI."
-
-Instead, the project can demonstrate:
-
-FastAPI
-REST API
-JWT Authentication
-RBAC/Authorization
-PostgreSQL
-SQLAlchemy
-Pillow
-Image Processing
-File Validation
-Caching
-Redis
-Rate Limiting
-Cloud Storage
-Docker
-Pytest
-CI/CD
-
-A strong project title would be:
-
-CloudImage — Scalable Image Processing & Transformation API
-
-And the architecture could eventually evolve toward:
-
-                   Client
-                     │
-                     ▼
-                FastAPI API
-                     │
-       ┌─────────────┼──────────────┐
-       ▼             ▼              ▼
-    Auth          Image API       Redis
-       │             │              │
-       ▼             ▼              │
-   PostgreSQL    Storage Service ◄──┘
-                     │
-              ┌──────┴──────┐
-              ▼             ▼
-            Local         S3/R2
-                     │
-                     ▼
-                  Pillow
-
-
-
-33. What each layer does
-api/
-
-Handles HTTP:
-
-request
-response
-status codes
-authentication
-schemas/
-
-Handles API validation:
-
-JSON structure
-response structure
-data validation
-models/
-
-Handles database structure:
-
-User
-Image
-relationships
-services/
-
-Handles business logic:
-
-upload
-validation
-processing
-storage/
-
-Handles physical file storage:
-
-save
-delete
-retrieve
-utils/
-
-Reusable utilities:
-
-image validation
-file utilities
-
-This separation will become especially useful when we implement transformations.
+This project is intended for educational, portfolio, and development purposes.
