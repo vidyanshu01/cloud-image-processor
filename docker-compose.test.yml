@@ -1,0 +1,54 @@
+name: cloudimage-test
+
+services:
+
+  postgres-test:
+    image: postgres:16-alpine
+    container_name: cloudimage-postgres-test
+
+    environment:
+      POSTGRES_DB: cloudimage_test
+      POSTGRES_USER: cloudimage_test
+      POSTGRES_PASSWORD: cloudimage_test_password
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U cloudimage_test -d cloudimage_test"
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+
+
+  api-test:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+
+    container_name: cloudimage-api-test
+
+    env_file:
+      - .env
+
+    environment:
+      DATABASE_URL: postgresql://cloudimage_test:cloudimage_test_password@postgres-test:5432/cloudimage_test
+
+    depends_on:
+      postgres-test:
+        condition: service_healthy
+
+    command:
+      [
+        "sh",
+        "-c",
+        "alembic upgrade head && pytest -v"
+      ]
+
+
+volumes:
+  postgres_test_data:

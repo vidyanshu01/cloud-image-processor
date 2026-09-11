@@ -3,19 +3,24 @@ from datetime import datetime
 from pathlib import Path
 
 
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
 
-LOG_DIR = Path("app/logs")
+BASE_DIR = Path(__file__).resolve().parents[1]
+LOG_DIR = BASE_DIR / "logs"
 
 LOG_DIR.mkdir(
     parents=True,
     exist_ok=True,
 )
 
+LOG_FILE = LOG_DIR / f"app_{datetime.now():%Y-%m-%d}.log"
 
-LOG_FILE = LOG_DIR / (
-    f"app_{datetime.now():%Y-%m-%d}.log"
-)
 
+# ---------------------------------------------------------------------------
+# Logging configuration
+# ---------------------------------------------------------------------------
 
 logging.basicConfig(
     level=logging.INFO,
@@ -35,5 +40,10 @@ logging.basicConfig(
         logging.StreamHandler(),
     ],
 )
+
+
+# ---------------------------------------------------------------------------
+# Application logger
+# ---------------------------------------------------------------------------
 
 logger = logging.getLogger("app")
