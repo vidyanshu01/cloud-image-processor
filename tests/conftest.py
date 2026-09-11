@@ -1,5 +1,6 @@
 import io
 import os
+import uuid
 from collections.abc import Generator
 
 import pytest
@@ -61,12 +62,111 @@ def db() -> Generator[Session, None, None]:
 
 
 # ---------------------------------------------------------
+# Fake object storage
+# ---------------------------------------------------------
+
+class FakeStorage:
+    """
+    In-memory object storage used by API tests.
+
+    This prevents tests from contacting Backblaze B2/S3.
+    Real storage behavior is tested separately in
+    tests/test_storage.py using the integration marker.
+    """
+
+    def __init__(self):
+        self.objects: dict[str, bytes] = {}
+
+    def upload_file(
+        self,
+        file_path: str,
+        storage_key: str,
+        content_type: str | None = None,
+    ) -> None:
+        with open(file_path, "rb") as file:
+            self.objects[storage_key] = file.read()
+
+    def upload_bytes(
+        self,
+        data: bytes,
+        storage_key: str,
+        content_type: str | None = None,
+    ) -> None:
+        self.objects[storage_key] = data
+
+    def download(
+        self,
+        storage_key: str,
+    ) -> bytes | None:
+        return self.objects.get(storage_key)
+
+    def delete(
+        self,
+        storage_key: str,
+    ) -> None:
+        self.objects.pop(storage_key, None)
+
+    def download_url(
+        self,
+        storage_key: str,
+        expires: int = 3600,
+    ) -> str:
+        if storage_key not in self.objects:
+            raise FileNotFoundError(storage_key)
+
+        return (
+            f"http://fake-storage.local/"
+            f"{storage_key}?expires={expires}"
+        )
+
+
+@pytest.fixture
+def fake_storage(monkeypatch) -> FakeStorage:
+    """
+    Replace application storage with in-memory storage.
+
+    The application imports the shared storage object directly
+    inside these service modules, so each imported reference is
+    patched explicitly.
+    """
+
+    fake = FakeStorage()
+
+    import app.services.file_service as file_service_module
+    import app.services.image_service as image_service_module
+    import app.services.transformation_service as transformation_module
+
+    monkeypatch.setattr(
+        image_service_module,
+        "storage",
+        fake,
+    )
+
+    monkeypatch.setattr(
+        file_service_module,
+        "storage",
+        fake,
+    )
+
+    monkeypatch.setattr(
+        transformation_module,
+        "storage",
+        fake,
+    )
+
+    return fake
+
+
+# ---------------------------------------------------------
 # FastAPI database override
 # ---------------------------------------------------------
 
 @pytest.fixture
-def client(db: Session) -> Generator[TestClient, None, None]:
-    """Create a FastAPI test client using the test database."""
+def client(
+    db: Session,
+    fake_storage: FakeStorage,
+) -> Generator[TestClient, None, None]:
+    """Create a FastAPI test client using test DB and fake storage."""
 
     def override_get_db():
         yield db
@@ -83,9 +183,6 @@ def client(db: Session) -> Generator[TestClient, None, None]:
 # Test user data
 # ---------------------------------------------------------
 
-import uuid
-
-
 @pytest.fixture
 def user_data() -> dict:
     unique_id = uuid.uuid4().hex[:8]
@@ -95,14 +192,17 @@ def user_data() -> dict:
         "email": f"testuser_{unique_id}@example.com",
         "password": "TestPassword123!",
     }
-    
-    
+
+
 @pytest.fixture
 def second_user_data() -> dict:
     """Return valid data for a second test user."""
+
+    unique_id = uuid.uuid4().hex[:8]
+
     return {
-        "username": "seconduser",
-        "email": "seconduser@example.com",
+        "username": f"seconduser_{unique_id}",
+        "email": f"seconduser_{unique_id}@example.com",
         "password": "SecondPassword123!",
     }
 
@@ -112,8 +212,12 @@ def second_user_data() -> dict:
 # ---------------------------------------------------------
 
 @pytest.fixture
-def registered_user(client: TestClient, user_data: dict) -> dict:
+def registered_user(
+    client: TestClient,
+    user_data: dict,
+) -> dict:
     """Register and return a test user."""
+
     response = client.post(
         "/api/v1/auth/register",
         json=user_data,
@@ -125,7 +229,10 @@ def registered_user(client: TestClient, user_data: dict) -> dict:
 
 
 @pytest.fixture
-def auth_token(client: TestClient, user_data: dict) -> str:
+def auth_token(
+    client: TestClient,
+    user_data: dict,
+) -> str:
     """Register a user and return its JWT access token."""
 
     register_response = client.post(
@@ -159,26 +266,26 @@ def auth_token(client: TestClient, user_data: dict) -> str:
 
     return data["access_token"]
 
+
 @pytest.fixture
-def auth_headers(auth_token: str) -> dict:
+def auth_headers(
+    auth_token: str,
+) -> dict:
     """Return Bearer authentication headers."""
+
     return {
         "Authorization": f"Bearer {auth_token}",
     }
 
 
 # ---------------------------------------------------------
-# Image fixture
+# Image fixtures
 # ---------------------------------------------------------
 
 @pytest.fixture
 def test_image() -> tuple[str, tuple[str, io.BytesIO, str]]:
-    """
-    Create an in-memory PNG image for upload tests.
+    """Create an in-memory PNG image for upload tests."""
 
-    Returns:
-        filename and multipart upload tuple.
-    """
     from PIL import Image
 
     image = Image.new(
@@ -188,10 +295,12 @@ def test_image() -> tuple[str, tuple[str, io.BytesIO, str]]:
     )
 
     image_bytes = io.BytesIO()
+
     image.save(
         image_bytes,
         format="PNG",
     )
+
     image_bytes.seek(0)
 
     return (
@@ -207,6 +316,7 @@ def test_image() -> tuple[str, tuple[str, io.BytesIO, str]]:
 @pytest.fixture
 def test_jpeg_image() -> tuple[str, tuple[str, io.BytesIO, str]]:
     """Create an in-memory JPEG image for upload tests."""
+
     from PIL import Image
 
     image = Image.new(
@@ -216,10 +326,12 @@ def test_jpeg_image() -> tuple[str, tuple[str, io.BytesIO, str]]:
     )
 
     image_bytes = io.BytesIO()
+
     image.save(
         image_bytes,
         format="JPEG",
     )
+
     image_bytes.seek(0)
 
     return (
@@ -248,24 +360,31 @@ def second_auth_token(
         json=second_user_data,
     )
 
-    assert register_response.status_code == 201
+    assert register_response.status_code == 201, (
+        register_response.text
+    )
 
     login_response = client.post(
         "/api/v1/auth/login",
-        data={
+        json={
             "username": second_user_data["username"],
             "password": second_user_data["password"],
         },
     )
 
-    assert login_response.status_code == 200
+    assert login_response.status_code == 200, (
+        login_response.text
+    )
 
     return login_response.json()["access_token"]
 
 
 @pytest.fixture
-def second_auth_headers(second_auth_token: str) -> dict:
+def second_auth_headers(
+    second_auth_token: str,
+) -> dict:
     """Return Bearer headers for the second user."""
+
     return {
         "Authorization": f"Bearer {second_auth_token}",
     }
