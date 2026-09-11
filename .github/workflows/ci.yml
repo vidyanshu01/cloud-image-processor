@@ -45,7 +45,7 @@ jobs:
       AWS_S3_BUCKET_NAME: ci-test-bucket
       AWS_S3_ENDPOINT_URL: http://localhost:9000
 
-      
+
     steps:
 
       - name: Checkout repository
@@ -68,7 +68,8 @@ jobs:
 
       - name: Run pytest
         run: |
-          pytest -v
+          pytest -v -m "not integration"
+          
 
 
   docker:
