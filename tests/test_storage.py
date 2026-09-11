@@ -1,9 +1,10 @@
 import uuid
 from pathlib import Path
+import pytest
 
 from app.storage.s3_storage import S3Storage
 
-
+@pytest.mark.integration
 def test_storage_upload_and_download():
     storage = S3Storage()
 
@@ -24,7 +25,7 @@ def test_storage_upload_and_download():
     finally:
         storage.delete(key)
 
-
+@pytest.mark.integration
 def test_storage_upload_file_and_download(tmp_path: Path):
     storage = S3Storage()
 
@@ -48,7 +49,7 @@ def test_storage_upload_file_and_download(tmp_path: Path):
     finally:
         storage.delete(key)
 
-
+@pytest.mark.integration
 def test_storage_delete():
     storage = S3Storage()
 
@@ -79,7 +80,7 @@ def test_storage_delete():
         # Safe cleanup in case the object still exists.
         storage.delete(key)
 
-
+@pytest.mark.integration
 def test_storage_download_url():
     storage = S3Storage()
 
@@ -101,7 +102,7 @@ def test_storage_download_url():
     finally:
         storage.delete(key)
 
-
+@pytest.mark.integration
 def test_storage_missing_object():
     storage = S3Storage()
 

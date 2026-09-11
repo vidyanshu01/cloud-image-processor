@@ -37,7 +37,15 @@ jobs:
 
     env:
       DATABASE_URL: postgresql://cloudimage_test:cloudimage_test_password@localhost:5432/cloudimage_test
+      JWT_SECRET_KEY: ci-test-secret-key-not-used-in-production
 
+      AWS_ACCESS_KEY_ID: ci-test-access-key
+      AWS_SECRET_ACCESS_KEY: ci-test-secret-key
+      AWS_REGION: us-east-1
+      AWS_S3_BUCKET_NAME: ci-test-bucket
+      AWS_S3_ENDPOINT_URL: http://localhost:9000
+
+      
     steps:
 
       - name: Checkout repository
