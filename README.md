@@ -5,6 +5,18 @@
 CloudImage allows authenticated users to upload images, securely store them in private AWS S3 storage, perform image transformations, retrieve transformed files through temporary presigned URLs, and manage their image library through a RESTful API.
 
 ---
+## 🚀 Live Deployment
+
+| Resource | Link |
+|---|---|
+| Live API | https://cloudimage-api-latest.onrender.com |
+| Swagger Docs | https://cloudimage-api-latest.onrender.com/docs |
+| Health Check | https://cloudimage-api-latest.onrender.com/api/v1/health |
+| Database Health | https://cloudimage-api-latest.onrender.com/api/v1/health/db |
+
+> Note: The API runs on a free Render instance and may take up to ~50 seconds
+> to respond after a period of inactivity.
+---
 
 ## 🚀 Features
 
