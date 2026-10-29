@@ -8,7 +8,9 @@ def test_root(client: TestClient):
 
     data = response.json()
 
-    assert "message" in data
+    assert data["service"] == "Cloud Image Processing Service"
+    assert data["version"] == "1.0.0"
+    assert data["status"] == "running"
 
 
 def test_health(client: TestClient):

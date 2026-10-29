@@ -20,6 +20,7 @@ from app.schemas.auth import (
     UserLogin,
     UserRegister,
     UserResponse,
+    ChangePasswordRequest
 )
 
 
@@ -231,4 +232,97 @@ def login(
         "access_token": access_token,
         "token_type": "bearer",
         "user": user,
+    }
+    
+@router.post(
+    "/change-password",
+    status_code=status.HTTP_200_OK,
+)
+def change_password(
+    password_data: ChangePasswordRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Change the password of the currently authenticated user.
+    """
+
+    logger.info(
+        "Password change requested | user_id=%s",
+        current_user.id,
+    )
+
+    # --------------------------------------------------------
+    # Verify current password
+    # --------------------------------------------------------
+
+    if not verify_password(
+        password_data.current_password,
+        current_user.password_hash,
+    ):
+        logger.warning(
+            "Password change failed | incorrect current password | user_id=%s",
+            current_user.id,
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Current password is incorrect",
+        )
+
+    # --------------------------------------------------------
+    # Validate new password
+    # --------------------------------------------------------
+
+    if len(password_data.new_password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be at least 8 characters long",
+        )
+
+    # --------------------------------------------------------
+    # Prevent same password
+    # --------------------------------------------------------
+
+    if verify_password(
+        password_data.new_password,
+        current_user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="New password must be different from current password",
+        )
+
+    # --------------------------------------------------------
+    # Update password
+    # --------------------------------------------------------
+
+    current_user.password_hash = hash_password(
+        password_data.new_password,
+    )
+
+    try:
+        db.commit()
+        db.refresh(current_user)
+
+    except Exception as exc:
+        db.rollback()
+
+        logger.exception(
+            "Password change failed | user_id=%s",
+            current_user.id,
+        )
+
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Unable to change password",
+        ) from exc
+
+    logger.info(
+        "Password changed successfully | user_id=%s",
+        current_user.id,
+    )
+
+    return {
+        "message": "Password changed successfully",
     }

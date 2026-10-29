@@ -51,6 +51,10 @@ router = APIRouter(
 file_service = ImageFileService()
 
 
+# ============================================================
+# Upload
+# ============================================================
+
 @router.post(
     "",
     response_model=ImageResponse,
@@ -76,9 +80,14 @@ async def upload_image(
     try:
         original_filename = file.filename or "image"
 
+        # --------------------------------------------
+        # Validate file size
+        # --------------------------------------------
+
         if file.size is None:
             logger.warning(
-                "Upload rejected | file size unavailable | user_id=%s",
+                "Upload rejected | file size unavailable | "
+                "user_id=%s",
                 current_user.id,
             )
 
@@ -103,6 +112,9 @@ async def upload_image(
                 detail=str(exc),
             ) from exc
 
+        # --------------------------------------------
+        # Save upload temporarily
+        # --------------------------------------------
 
         with NamedTemporaryFile(
             suffix=".upload",
@@ -120,6 +132,10 @@ async def upload_image(
             current_user.id,
             temp_path,
         )
+
+        # --------------------------------------------
+        # Create image
+        # --------------------------------------------
 
         image = create_image(
             db=db,
@@ -168,9 +184,15 @@ async def upload_image(
         ) from exc
 
     finally:
+        # --------------------------------------------
+        # Remove temporary file
+        # --------------------------------------------
+
         if temp_path:
             try:
-                Path(temp_path).unlink(missing_ok=True)
+                Path(temp_path).unlink(
+                    missing_ok=True
+                )
 
                 logger.info(
                     "Temporary upload file removed | "
@@ -188,6 +210,10 @@ async def upload_image(
 
         await file.close()
 
+
+# ============================================================
+# List images
+# ============================================================
 
 @router.get(
     "",
@@ -217,6 +243,10 @@ def list_images(
     )
 
 
+# ============================================================
+# Transformed image preview
+# ============================================================
+
 @router.get(
     "/transformations/{transformation_id}/file",
     response_model=FileAccessResponse,
@@ -227,12 +257,12 @@ def get_transformed_image_file(
     db: Session = Depends(get_db),
 ):
     """
-    Generate a temporary S3 presigned URL
-    for a transformed image.
+    Generate a temporary presigned URL
+    for viewing a transformed image.
     """
 
     logger.info(
-        "Transformed file requested | "
+        "Transformed image preview requested | "
         "transformation_id=%s | user_id=%s",
         transformation_id,
         current_user.id,
@@ -245,6 +275,42 @@ def get_transformed_image_file(
     )
 
 
+# ============================================================
+# Transformed image download
+# ============================================================
+
+@router.get(
+    "/transformations/{transformation_id}/download",
+    response_model=FileAccessResponse,
+)
+def download_transformed_image(
+    transformation_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """
+    Generate a temporary presigned URL
+    for downloading a transformed image.
+    """
+
+    logger.info(
+        "Transformed image download requested | "
+        "transformation_id=%s | user_id=%s",
+        transformation_id,
+        current_user.id,
+    )
+
+    return file_service.get_transformed_download(
+        db=db,
+        transformation_id=transformation_id,
+        user_id=current_user.id,
+    )
+
+
+# ============================================================
+# Original image preview
+# ============================================================
+
 @router.get(
     "/{image_id}/file",
     response_model=FileAccessResponse,
@@ -255,12 +321,12 @@ def get_image_file(
     db: Session = Depends(get_db),
 ):
     """
-    Generate a temporary S3 presigned URL
+    Generate a temporary presigned URL
     for viewing the original image.
     """
 
     logger.info(
-        "Image file requested | "
+        "Original image preview requested | "
         "image_id=%s | user_id=%s",
         image_id,
         current_user.id,
@@ -272,6 +338,10 @@ def get_image_file(
         user_id=current_user.id,
     )
 
+
+# ============================================================
+# Original image download
+# ============================================================
 
 @router.get(
     "/{image_id}/download",
@@ -283,23 +353,27 @@ def download_image(
     db: Session = Depends(get_db),
 ):
     """
-    Generate a temporary S3 presigned URL
+    Generate a temporary presigned URL
     for downloading the original image.
     """
 
     logger.info(
-        "Image download requested | "
+        "Original image download requested | "
         "image_id=%s | user_id=%s",
         image_id,
         current_user.id,
     )
 
-    return file_service.get_original_file(
+    return file_service.get_original_download(
         db=db,
         image_id=image_id,
         user_id=current_user.id,
     )
 
+
+# ============================================================
+# Get image metadata
+# ============================================================
 
 @router.get(
     "/{image_id}",
@@ -315,7 +389,7 @@ def get_image(
     """
 
     logger.info(
-        "Image requested | "
+        "Image metadata requested | "
         "image_id=%s | user_id=%s",
         image_id,
         current_user.id,
@@ -353,6 +427,10 @@ def get_image(
     return image
 
 
+# ============================================================
+# Transform image
+# ============================================================
+
 @router.post(
     "/{image_id}/transform",
     response_model=TransformationResponse,
@@ -374,6 +452,10 @@ def transform_image(
         image_id,
         current_user.id,
     )
+
+    # --------------------------------------------
+    # Verify image ownership
+    # --------------------------------------------
 
     image_record = (
         db.query(Image)
@@ -398,6 +480,10 @@ def transform_image(
         )
 
     try:
+        # ----------------------------------------
+        # Process transformation
+        # ----------------------------------------
+
         result, cached = process_transformation(
             db=db,
             image_record=image_record,
@@ -454,6 +540,10 @@ def transform_image(
     }
 
 
+# ============================================================
+# Delete image
+# ============================================================
+
 @router.delete(
     "/{image_id}",
     status_code=status.HTTP_204_NO_CONTENT,
@@ -483,9 +573,7 @@ def delete_image_endpoint(
 
     except ValueError as exc:
 
-
         if str(exc) == "Image not found.":
-
             logger.warning(
                 "Image deletion failed | image not found | "
                 "image_id=%s | user_id=%s",

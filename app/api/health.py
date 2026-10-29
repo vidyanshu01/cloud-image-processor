@@ -28,9 +28,7 @@ def database_health(
 ):
     try:
 
-        db.execute(
-            text("SELECT 1")
-        )
+        db.execute(text("SELECT 1"))
 
         logger.info(
             "Database health check successful"

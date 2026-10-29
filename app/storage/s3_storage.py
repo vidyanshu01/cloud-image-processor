@@ -160,33 +160,48 @@ class S3Storage:
         self,
         storage_key: str,
         expires: int = 3600,
+        filename: str | None = None,
+        download: bool = False,
     ) -> str:
 
         logger.info(
-            "Generating S3 presigned URL | key=%s",
+            "Generating S3 URL | key=%s | download=%s",
             storage_key,
+            download,
         )
 
         try:
+            params = {
+                "Bucket": self.bucket,
+                "Key": storage_key,
+            }
+
+            if download:
+                params["ResponseContentDisposition"] = (
+                    f'attachment; filename="{filename}"'
+                    if filename
+                    else "attachment"
+                )
+            else:
+                params["ResponseContentDisposition"] = "inline"
+
             url = self.client.generate_presigned_url(
                 "get_object",
-                Params={
-                    "Bucket": self.bucket,
-                    "Key": storage_key,
-                },
+                Params=params,
                 ExpiresIn=expires,
             )
 
         except ClientError:
             logger.exception(
-                "S3 presigned URL generation failed | key=%s",
+                "S3 URL generation failed | key=%s",
                 storage_key,
             )
             raise
 
         logger.info(
-            "S3 presigned URL generated | key=%s",
+            "S3 URL generated | key=%s | download=%s",
             storage_key,
+            download,
         )
 
         return url

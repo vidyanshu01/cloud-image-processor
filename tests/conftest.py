@@ -110,13 +110,22 @@ class FakeStorage:
         self,
         storage_key: str,
         expires: int = 3600,
+        filename: str | None = None,
+        download: bool = False,
     ) -> str:
         if storage_key not in self.objects:
             raise FileNotFoundError(storage_key)
 
+        disposition = "attachment" if download else "inline"
+
+        if download and filename:
+            disposition = f'attachment; filename="{filename}"'
+
         return (
             f"http://fake-storage.local/"
-            f"{storage_key}?expires={expires}"
+            f"{storage_key}"
+            f"?expires={expires}"
+            f"&disposition={disposition}"
         )
 
 

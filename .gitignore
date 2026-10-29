@@ -1,73 +1,112 @@
-
+# ==========================================
+# Python & Bytecode
+# ==========================================
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 *$py.class
 *.so
 
+# ==========================================
+# Virtual Environments
+# ==========================================
 Image_venv/
 .venv/
 venv/
 env/
 ENV/
 
+# ==========================================
+# Environment Variables & Secrets
+# ==========================================
 .env
 .env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+service-account*.json
 
-
-
+# ==========================================
+# IDEs & Text Editors
+# ==========================================
 .vscode/
 .idea/
 *.swp
 *.swo
 
-
+# ==========================================
+# Operating System Files
+# ==========================================
 .DS_Store
 Thumbs.db
 desktop.ini
 
-
+# ==========================================
+# Logs
+# ==========================================
 *.log
 app/logs/
 logs/
 
-
+# ==========================================
+# Testing & Code Quality
+# ==========================================
 .pytest_cache/
 .coverage
 .coverage.*
 htmlcov/
 .tox/
 .nox/
-
-
 .mypy_cache/
 .ruff_cache/
 
+# ==========================================
+# Notebooks
+# ==========================================
+.ipynb_checkpoints/
 
+# ==========================================
+# Build & Distribution
+# ==========================================
 build/
 dist/
 *.egg-info/
 .eggs/
 
+# ==========================================
+# Frontend (Node / Packaging)
+# ==========================================
+frontend/node_modules/
+frontend/dist/
 
-*.tmp
-*.temp
-*.bak
-*.swp
-
+# ==========================================
+# Data, Uploads & Databases
+# ==========================================
+*.db
+*.sqlite
+*.sqlite3
 uploads/
 temp/
 tmp/
 *.upload
 
+# ==========================================
+# Temporary & Backup Files
+# ==========================================
+*.tmp
+*.temp
+*.bak
 
-*.db
-*.sqlite
-*.sqlite3
+# ==========================================
+# Docker
+# ==========================================
+*.pid
 
-.ipynb_checkpoints/
-
-
-*.pem
-*.key
-credentials.json
-service-account*.json
+# ==========================================
+# Frontend Environment
+# ==========================================
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
