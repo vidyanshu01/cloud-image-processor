@@ -1,3 +1,4 @@
+
 name: B2 Storage Integration Tests
 
 on:
@@ -6,42 +7,33 @@ on:
   push:
     branches:
       - main
-
-  pull_request:
-    branches:
-      - main
-
 jobs:
   b2-integration:
     name: Test Backblaze B2 Storage
     runs-on: ubuntu-latest
 
-    env:
-      # Application settings
-      JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
+    defaults:
+      run:
+        working-directory: backend
 
-      # Backblaze B2 S3-compatible settings
+    env:
+      JWT_SECRET_KEY: ${{ secrets.JWT_SECRET_KEY }}
       AWS_ACCESS_KEY_ID: ${{ secrets.B2_APPLICATION_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.B2_APPLICATION_KEY }}
       AWS_REGION: ${{ secrets.B2_REGION }}
       AWS_S3_BUCKET_NAME: ${{ secrets.B2_BUCKET_NAME }}
       AWS_S3_ENDPOINT_URL: ${{ secrets.B2_ENDPOINT_URL }}
-
-      # Test database
       DATABASE_URL: postgresql://cloudimage_test:cloudimage_test_password@localhost:5432/cloudimage_test
 
     services:
       postgres:
         image: postgres:16-alpine
-
         env:
           POSTGRES_DB: cloudimage_test
           POSTGRES_USER: cloudimage_test
           POSTGRES_PASSWORD: cloudimage_test_password
-
         ports:
           - 5432:5432
-
         options: >-
           --health-cmd "pg_isready -U cloudimage_test -d cloudimage_test"
           --health-interval 5s
@@ -49,7 +41,6 @@ jobs:
           --health-retries 10
 
     steps:
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -57,7 +48,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          cache: "pip"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
         run: |
@@ -94,9 +86,7 @@ jobs:
           PY
 
       - name: Run database migrations
-        run: |
-          alembic upgrade head
+        run: alembic upgrade head
 
       - name: Run B2 integration tests
-        run: |
-          pytest -v -m integration
+        run: pytest -v -m integration
