@@ -1,37 +1,41 @@
 # ☁️ CloudImage — Cloud Image Processing Service
 
-> A production-style, secure, API-first image processing platform built with **FastAPI, PostgreSQL, AWS S3, JWT authentication, Pillow, SQLAlchemy, and Alembic**.
+A full-stack, cloud-based image processing platform built with **FastAPI, React, PostgreSQL, Backblaze B2, JWT authentication, Pillow, SQLAlchemy, and Alembic**.
 
-CloudImage allows authenticated users to upload images, securely store them in private AWS S3 storage, perform image transformations, retrieve transformed files through temporary presigned URLs, and manage their image library through a RESTful API.
-
----
-## 🚀 Live Deployment
-
-| Resource | Link |
-|---|---|
-| Live API | https://cloudimage-api-latest.onrender.com |
-| Swagger Docs | https://cloudimage-api-latest.onrender.com/docs |
-| Health Check | https://cloudimage-api-latest.onrender.com/api/v1/health |
-| Database Health | https://cloudimage-api-latest.onrender.com/api/v1/health/db |
-
-> Note: The API runs on a free Render instance and may take up to ~50 seconds
-> to respond after a period of inactivity.
----
+CloudImage allows authenticated users to upload images, securely store them in private object storage, perform image transformations, preview and download transformed files through temporary presigned URLs, and manage their image library through a responsive web dashboard and REST API.
 
 ## 🚀 Live Deployment
 
 | Resource | Link |
 |---|---|
-| Live API | https://cloudimage-api-latest.onrender.com |
-| Swagger Docs | https://cloudimage-api-latest.onrender.com/docs |
-| Health Check | https://cloudimage-api-latest.onrender.com/api/v1/health |
+| **Live Application** | https://cloud-image-processor-nine.vercel.app |
+| Backend API | https://cloudimage-api-latest.onrender.com |
+| Swagger Documentation | https://cloudimage-api-latest.onrender.com/docs |
+| API Health | https://cloudimage-api-latest.onrender.com/api/v1/health |
 | Database Health | https://cloudimage-api-latest.onrender.com/api/v1/health/db |
+| GitHub Repository | https://github.com/vidyanshu01/cloud-image-processor |
 
-> Note: The API runs on a free Render instance and may take up to ~50 seconds
-> to respond after a period of inactivity.
+> **Note:** The backend runs on Render and may take some time to respond after inactivity.
 
+## 🖥️ Screenshots
 
-## 🚀 Features
+### Dashboard
+
+![CloudImage Dashboard](docs/assets/dashboard.png)
+
+### Image Editor
+
+![CloudImage Image Editor](docs/assets/image-editor.png)
+
+### Transformed Image Preview
+
+![CloudImage Transformed Image](docs/assets/transformed-image.png)
+
+> Add the screenshots to `docs/assets/`. Use screenshots from the working production application.
+
+---
+
+## ✨ Features
 
 ### 🔐 Authentication & Security
 
@@ -40,15 +44,14 @@ CloudImage allows authenticated users to upload images, securely store them in p
 - Argon2 password hashing
 - Protected image APIs
 - User-specific resource authorization
-- Generic authentication error messages
-- Private AWS S3 bucket
-- Temporary S3 presigned URLs
+- Private Backblaze B2 bucket
+- Temporary presigned URLs
 - File size validation
 - MIME type validation
 - Image integrity validation
 - Image dimension limits
 - Maximum pixel-count protection
-- Environment-based secrets
+- Environment-based configuration
 - Sensitive credentials excluded from Git
 
 ### 🖼️ Image Management
@@ -59,12 +62,9 @@ CloudImage allows authenticated users to upload images, securely store them in p
 - Pagination
 - Search by filename
 - Filter by image format
-- Sort by:
-  - Newest
-  - Oldest
-  - Largest
-  - Smallest
+- Sort by newest, oldest, largest, and smallest
 - Generate secure image access URLs
+- Download images
 - Delete images
 - Delete associated transformations
 
@@ -94,32 +94,39 @@ Supported formats:
 
 CloudImage generates a deterministic transformation hash using **SHA3-256**.
 
-If the same transformation is requested again:
+When an identical transformation is requested again, the application checks the database for an existing result and reuses it.
 
 ```text
 User Request
-     ↓
+     |
+     v
 Transformation Hash
-     ↓
+     |
+     v
 Database Cache Lookup
-     ↓
- ┌───────────────┐
- │ Cached Result │──→ Return existing result
- └───────────────┘
-          │
-          ↓ cache miss
-   Process Image
-          ↓
-      Upload S3
-          ↓
-       Save DB
+     |
+     +---- Cache Hit ----> Return Existing Result
+     |
+     +---- Cache Miss
+                 |
+                 v
+          Process Image
+                 |
+                 v
+          Upload to B2
+                 |
+                 v
+          Save Metadata
+                 |
+                 v
+          Return Result
 ```
 
-This avoids unnecessary image processing and duplicate S3 uploads.
+This reduces unnecessary image processing and duplicate object uploads.
 
-### ☁️ AWS S3 Storage
+### ☁️ Backblaze B2 Object Storage
 
-Images are stored in a private AWS S3 bucket.
+Images are stored in a private Backblaze B2 bucket through its S3-compatible API.
 
 Storage structure:
 
@@ -137,228 +144,216 @@ users/
 │       └── ...
 ```
 
-The application does **not** expose the S3 bucket publicly.
+The application does not expose the storage bucket publicly.
 
-Instead, it generates temporary presigned URLs:
+Instead, FastAPI generates temporary presigned URLs:
 
 ```text
-Private S3 Object
-       ↓
-FastAPI
-       ↓
-Presigned URL
-       ↓
-Client
+Private B2 Object
+       |
+       v
+    FastAPI
+       |
+       v
+  Presigned URL
+       |
+       v
+     Client
 ```
 
 ---
 
-# 🏗️ System Architecture
+## 🏗️ System Architecture
 
 ```text
-                         ┌─────────────────────┐
-                         │       Client        │
-                         │ Swagger / Frontend  │
-                         └──────────┬──────────┘
-                                    │
-                                    │ HTTPS / REST API
-                                    ▼
-                         ┌─────────────────────┐
-                         │       FastAPI       │
-                         │     API Layer       │
-                         └──────────┬──────────┘
-                                    │
-                    ┌───────────────┼────────────────┐
-                    │               │                │
-                    ▼               ▼                ▼
-             ┌────────────┐  ┌────────────┐  ┌──────────────┐
-             │   Auth     │  │   Image    │  │Transformation│
-             │  Service   │  │  Service   │  │   Service    │
-             └─────┬──────┘  └─────┬──────┘  └──────┬───────┘
-                   │               │                │
-                   │               │                │
-                   ▼               ▼                ▼
-             ┌─────────────────────────────────────────────┐
-             │                  PostgreSQL                  │
-             │ Users / Images / Transformations            │
-             └──────────────────────┬──────────────────────┘
-                                    │
-                                    │
-                                    ▼
-                         ┌─────────────────────┐
-                         │       AWS S3        │
-                         │   Private Objects   │
-                         └─────────────────────┘
+              +----------------------+
+              |       Client         |
+              |    React + Vite      |
+              +----------+-----------+
+                         |
+                         | HTTPS / REST API
+                         v
+              +----------------------+
+              |       FastAPI        |
+              |      API Layer       |
+              +----------+-----------+
+                         |
+          +--------------+--------------+
+          |              |              |
+          v              v              v
+     +---------+    +---------+    +-------------+
+     |  Auth   |    |  Image  |    |Transformation|
+     | Service |    | Service |    |   Service   |
+     +----+----+    +----+----+    +------+------+
+          |              |                |
+          +--------------+----------------+
+                         |
+                         v
+              +----------------------+
+              |      PostgreSQL      |
+              | Users / Images /     |
+              | Transformations     |
+              +----------+-----------+
+                         |
+                         v
+              +----------------------+
+              |    Backblaze B2      |
+              |   Private Objects    |
+              +----------------------+
 ```
 
----
-
-# 🧰 Tech Stack
+## 🧰 Technology Stack
 
 | Category | Technology |
 |---|---|
-| Language | Python |
+| Frontend | React |
+| Frontend Build Tool | Vite |
 | API Framework | FastAPI |
+| Language | Python |
 | Validation | Pydantic |
 | Database | PostgreSQL |
 | ORM | SQLAlchemy |
-| Database Migration | Alembic |
+| Database Migrations | Alembic |
 | Image Processing | Pillow |
-| Object Storage | AWS S3 |
-| AWS SDK | Boto3 |
+| Object Storage | Backblaze B2 |
+| Storage SDK | Boto3 |
 | Authentication | JWT |
 | Password Hashing | Argon2 |
 | Configuration | Pydantic Settings |
-| Logging | Python Logging |
 | API Documentation | Swagger / OpenAPI |
 | Testing | Pytest |
+| Containerization | Docker |
+| Orchestration | Docker Compose |
+| CI/CD | GitHub Actions |
+| Frontend Deployment | Vercel |
+| Backend Deployment | Render |
 | Version Control | Git / GitHub |
 
 ---
 
-# 📁 Project Structure
+## 📁 Project Structure
 
 ```text
-CloudImage/
+cloud-image-processor/
 │
-├── alembic/
-│   ├── versions/
-│   ├── env.py
-│   └── script.py.mako
+├── backend/
+│   ├── alembic/
+│   │   └── versions/
+│   │
+│   ├── app/
+│   │   ├── api/
+│   │   ├── core/
+│   │   ├── models/
+│   │   ├── schemas/
+│   │   ├── services/
+│   │   ├── storage/
+│   │   ├── utils/
+│   │   └── main.py
+│   │
+│   ├── tests/
+│   ├── Dockerfile
+│   ├── Dockerfile.test
+│   ├── alembic.ini
+│   └── requirements.txt
 │
-├── app/
-│   │
-│   ├── api/
-│   │   ├── auth.py
-│   │   ├── dependencies.py
-│   │   ├── health.py
-│   │   └── image.py
-│   │
-│   ├── core/
-│   │   ├── config.py
-│   │   ├── constants.py
-│   │   ├── database.py
-│   │   ├── logging.py
-│   │   └── security.py
-│   │
-│   ├── models/
-│   │   ├── user.py
-│   │   ├── image.py
-│   │   └── transformation.py
-│   │
-│   ├── schemas/
-│   │   ├── auth.py
-│   │   ├── image.py
-│   │   ├── image_query.py
-│   │   └── transformation.py
-│   │
-│   ├── services/
-│   │   ├── file_service.py
-│   │   ├── image_service.py
-│   │   ├── image_validator.py
-│   │   └── transformation_service.py
-│   │
-│   ├── storage/
-│   │   ├── __init__.py
-│   │   └── s3_storage.py
-│   │
-│   ├── utils/
-│   │   ├── cache_utils.py
-│   │   ├── file_utils.py
-│   │   ├── hash_utils.py
-│   │   ├── image_utils.py
-│   │   └── storage_key.py
-│   │
-│   └── main.py
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   ├── package.json
+│   └── vite.config.js
 │
+├── .github/
+│   └── workflows/
+│       ├── ci.yml
+│       └── integration.yml
+│
+├── docs/
+│   └── assets/
+│
+├── docker-compose.yml
+├── docker-compose.test.yml
+├── .dockerignore
 ├── .env.example
 ├── .gitignore
-├── alembic.ini
-├── requirements.txt
 └── README.md
 ```
 
 ---
 
-# 🔄 Image Processing Pipeline
-
-## Upload Flow
+## 🔄 Image Upload Pipeline
 
 ```text
 Client
-  │
-  │ Upload Image
-  ▼
+  |
+  | Upload Image
+  v
 FastAPI
-  │
-  ├── File Size Validation
-  │
-  ├── MIME Type Validation
-  │
-  ├── Pillow Image Validation
-  │
-  ├── Dimension Validation
-  │
-  ├── Pixel Count Validation
-  │
-  ▼
+  |
+  +-- File Size Validation
+  |
+  +-- MIME Type Validation
+  |
+  +-- Pillow Image Validation
+  |
+  +-- Dimension Validation
+  |
+  +-- Pixel Count Validation
+  |
+  v
 Temporary File
-  │
-  ▼
-AWS S3
-  │
-  ▼
+  |
+  v
+Backblaze B2
+  |
+  v
 PostgreSQL
-  │
-  ▼
+  |
+  v
 API Response
 ```
 
----
-
-# 🎨 Transformation Pipeline
+## 🎨 Transformation Pipeline
 
 ```text
 Original Image
-      │
-      ▼
-TransformationRequest
-      │
-      ▼
+      |
+      v
+Transformation Request
+      |
+      v
 Generate SHA3-256 Hash
-      │
-      ▼
+      |
+      v
 Check Database Cache
-      │
- ┌────┴─────┐
- │          │
-Hit        Miss
- │          │
- ▼          ▼
-Return    Download
-Existing    from S3
-Result       │
-             ▼
+      |
+      +---- Hit ----> Return Existing Result
+      |
+      +---- Miss
+               |
+               v
+         Download from B2
+               |
+               v
       Apply Transformations
-             │
-             ▼
-       Encode Output
-             │
-             ▼
-        Upload to S3
-             │
-             ▼
-       Save Metadata
-             │
-             ▼
-       Return Result
+               |
+               v
+         Encode Output
+               |
+               v
+         Upload to B2
+               |
+               v
+        Save Metadata
+               |
+               v
+         Return Result
 ```
 
 ---
 
-# 🗄️ Database Design
+## 🗄️ Database Design
 
-## Users
+### Users
 
 ```text
 users
@@ -369,7 +364,7 @@ users
 └── created_at
 ```
 
-## Images
+### Images
 
 ```text
 images
@@ -386,7 +381,7 @@ images
 └── updated_at
 ```
 
-## Image Transformations
+### Image Transformations
 
 ```text
 image_transformations
@@ -403,66 +398,31 @@ image_transformations
 └── created_at
 ```
 
-Relationship:
+Relationships:
 
 ```text
 User
- │
- └──< Images
-        │
-        └──< Transformations
+ |
+ +---- Images
+          |
+          +---- Transformations
 ```
 
 ---
 
-# 🔐 AWS S3 Security
-
-The S3 bucket is configured as **private**.
-
-The application's IAM user requires only object-level permissions:
-
-```text
-s3:PutObject
-s3:GetObject
-s3:DeleteObject
-```
-
-Object access:
-
-```text
-arn:aws:s3:::YOUR_BUCKET/*
-```
-
-`ListBucket` permission is not required because image listing is handled through PostgreSQL.
-
-### Security principle
-
-```text
-Public S3 Bucket
-      ❌
-
-Private S3 Bucket
-      ✅
-          │
-          ▼
-FastAPI generates temporary
-presigned URL
-          │
-          ▼
-Client accesses object
-```
-
----
-
-# 🔑 Authentication
+## 🔐 Authentication
 
 CloudImage uses JWT Bearer authentication.
 
+Registration:
+
 ```text
-Register
-   ↓
+User Registration
+       |
+       v
 Argon2 Password Hash
-   ↓
+       |
+       v
 PostgreSQL
 ```
 
@@ -470,15 +430,18 @@ Login:
 
 ```text
 Username + Password
-       ↓
+       |
+       v
 Verify Argon2 Hash
-       ↓
+       |
+       v
 Generate JWT
-       ↓
+       |
+       v
 Client
 ```
 
-Protected request:
+Protected requests:
 
 ```http
 Authorization: Bearer <access_token>
@@ -486,56 +449,26 @@ Authorization: Bearer <access_token>
 
 JWT expiration is configurable through environment variables.
 
----
-
-# 🛡️ Image Validation
+## 🛡️ Image Validation
 
 Before an image is stored, CloudImage validates:
 
-### File size
+| Validation | Limit / Supported Values |
+|---|---|
+| Maximum file size | 10 MB |
+| JPEG | Supported |
+| PNG | Supported |
+| WebP | Supported |
+| GIF | Supported |
+| Maximum dimensions | 10000 × 10000 |
+| Maximum pixel count | 50,000,000 pixels |
+| Image integrity | Pillow verification |
 
-Default maximum:
-
-```text
-10 MB
-```
-
-### MIME type
-
-Allowed:
-
-```text
-image/jpeg
-image/png
-image/webp
-image/gif
-```
-
-### Image integrity
-
-Pillow verifies that the file is a valid image.
-
-### Dimensions
-
-Maximum:
-
-```text
-10000 × 10000
-```
-
-### Pixel count
-
-Maximum:
-
-```text
-50,000,000 pixels
-```
-
-This provides multiple layers of protection rather than trusting only the uploaded filename or MIME type.
+These checks provide multiple layers of protection rather than trusting only the uploaded filename or MIME type.
 
 ---
 
-# 🌐 API Endpoints
+## 🌐 API Endpoints
 
 Base URL:
 
@@ -543,14 +476,14 @@ Base URL:
 /api/v1
 ```
 
-## Health
+### Health
 
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/health` | Application health |
 | GET | `/health/db` | Database health |
 
-## Authentication
+### Authentication
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -558,7 +491,7 @@ Base URL:
 | POST | `/auth/login` | Login |
 | GET | `/auth/me` | Current user |
 
-## Images
+### Images
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -570,135 +503,136 @@ Base URL:
 | POST | `/images/{image_id}/transform` | Transform image |
 | DELETE | `/images/{image_id}` | Delete image |
 
-## Transformations
+### Transformations
 
 | Method | Endpoint | Description |
 |---|---|---|
 | GET | `/images/transformations/{transformation_id}/file` | Generate transformed image URL |
 
----
-
-# 📚 API Documentation
-
-When running locally:
-
-### Swagger UI
-
-```text
-http://127.0.0.1:8000/docs
-```
-
-### ReDoc
-
-```text
-http://127.0.0.1:8000/redoc
-```
+For complete request and response schemas, visit the live [Swagger documentation](https://cloudimage-api-latest.onrender.com/docs).
 
 ---
 
-# ⚙️ Local Setup
+## 🧪 Testing & CI/CD
 
-## 1. Clone repository
+The backend includes automated regression and storage integration tests using Pytest.
+
+Test coverage includes:
+
+- Application and database health
+- User registration and login
+- Authentication and authorization
+- Image upload and validation
+- Image metadata and pagination
+- Search, filtering, and sorting
+- Image transformations
+- Transformation caching
+- Original and transformed file URLs
+- Storage upload, download, and deletion
+- Presigned URL generation
+- Cross-user access protection
+
+### GitHub Actions
+
+Automated workflows are configured for:
+
+- Backend CI testing
+- Docker image build
+- Backblaze B2 storage integration testing
+
+The B2 integration workflow verifies communication with actual object storage using GitHub Actions secrets.
+
+Run backend tests locally:
+
+```bash
+cd backend
+python -m pytest -v
+```
+
+Run Docker integration tests from the repository root:
+
+```bash
+docker compose -f docker-compose.test.yml up --build --abort-on-container-exit --exit-code-from api-test
+```
+
+---
+
+## 🐳 Docker Setup
+
+Build and start the application:
+
+```bash
+docker compose up --build -d
+```
+
+Check running containers:
+
+```bash
+docker compose ps
+```
+
+View logs:
+
+```bash
+docker compose logs -f
+```
+
+Stop services:
+
+```bash
+docker compose down
+```
+
+Configure the required environment variables before starting the application.
+
+---
+
+## ⚙️ Local Development Setup
+
+### 1. Clone Repository
 
 ```bash
 git clone https://github.com/vidyanshu01/cloud-image-processor.git
-cd CloudImage
+cd cloud-image-processor
 ```
 
-## 2. Create virtual environment
+### 2. Configure Environment
+
+Use `.env.example` as the template and create a local `.env` file.
+
+Never commit actual credentials.
+
+### 3. Backend Setup
+
+```bash
+cd backend
+
+python -m venv .venv
+```
 
 Windows:
 
-```bash
-python -m venv .venv
-.venv\Scripts\activate
+```powershell
+.venv\Scripts\Activate.ps1
 ```
 
 Linux/macOS:
 
 ```bash
-python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-## 3. Install dependencies
+Install dependencies:
 
 ```bash
 pip install -r requirements.txt
 ```
 
----
-
-# 🔧 Environment Configuration
-
-Create:
-
-```text
-.env
-```
-
-Use `.env.example` as the template.
-
-Example:
-
-```env
-APP_NAME=Cloud Image Processing Service
-APP_VERSION=1.0.0
-DEBUG=True
-
-DATABASE_URL=postgresql+psycopg://postgres:YOUR_PASSWORD@localhost:5432/image_service
-
-JWT_SECRET_KEY=YOUR_SECRET_KEY
-JWT_ALGORITHM=HS256
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-MAX_FILE_SIZE_MB=10
-
-AWS_ACCESS_KEY_ID=YOUR_AWS_ACCESS_KEY
-AWS_SECRET_ACCESS_KEY=YOUR_AWS_SECRET_KEY
-AWS_REGION=ap-south-1
-AWS_S3_BUCKET_NAME=YOUR_BUCKET_NAME
-```
-
-> **Never commit `.env` or AWS credentials to GitHub.**
-
----
-
-# 🗃️ Database Setup
-
-Create the PostgreSQL database:
-
-```text
-image_service
-```
-
-Run migrations:
+Run database migrations:
 
 ```bash
-alembic upgrade head
+python -m alembic upgrade head
 ```
-
-Check migration status:
-
-```bash
-alembic current
-```
-
-Check for schema differences:
-
-```bash
-alembic check
-```
-
-Expected:
-
-```text
-No new upgrade operations detected.
-```
-
----
-
-# ▶️ Run Application
 
 Start FastAPI:
 
@@ -706,105 +640,67 @@ Start FastAPI:
 uvicorn app.main:app --reload
 ```
 
-Application:
+### 4. Frontend Setup
 
-```text
-http://127.0.0.1:8000
+Open another terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
 ```
 
-Swagger:
+The Vite development server will display its local URL in the terminal.
+
+### 5. API Documentation
+
+Swagger UI:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
----
+ReDoc:
 
-# 🧪 Testing
-
-The API was regression-tested across the complete application flow.
-
-Test coverage includes:
-
-### Health
-
-- Application health
-- Database health
-
-### Authentication
-
-- User registration
-- Duplicate registration
-- Login
-- Current user
-- Invalid credentials
-- Invalid JWT
-
-### Image Upload
-
-- JPEG
-- PNG
-- WebP
-- File size validation
-- MIME validation
-- Corrupted images
-- Invalid uploads
-
-### Image Management
-
-- Get image
-- List images
-- Pagination
-- Search
-- Format filtering
-- Sorting
-- File URL generation
-- Download URL generation
-- Delete
-
-### Transformations
-
-- Resize
-- Crop
-- Rotate
-- Flip
-- Mirror
-- Grayscale
-- Sepia
-- Watermark
-- Format conversion
-- Quality settings
-
-### Transformation Cache
-
-- Cache miss
-- Transformation processing
-- Cache hit
-- Existing transformation reuse
-
-### Authorization
-
-Cross-user access was tested to ensure users cannot access another user's:
-
-- Image metadata
-- Original image
-- Transformations
-- Files
-- Delete operations
-
-### Storage
-
-- S3 upload
-- S3 download
-- S3 deletion
-- Presigned URL generation
-- Database/S3 cleanup behavior
+```text
+http://127.0.0.1:8000/redoc
+```
 
 ---
 
-# 📊 API Response Strategy
+## 🔧 Environment Configuration
 
-File endpoints return JSON instead of redirecting directly to S3.
+Configure the following variables using `.env.example`:
+
+```env
+APP_NAME=Cloud Image Processing Service
+APP_VERSION=1.0.0
+DEBUG=True
+
+DATABASE_URL=YOUR_DATABASE_URL
+
+JWT_SECRET_KEY=YOUR_SECRET_KEY
+JWT_ALGORITHM=HS256
+ACCESS_TOKEN_EXPIRE_MINUTES=30
+
+MAX_FILE_SIZE_MB=10
+
+AWS_ACCESS_KEY_ID=YOUR_B2_KEY_ID
+AWS_SECRET_ACCESS_KEY=YOUR_B2_APPLICATION_KEY
+AWS_REGION=YOUR_B2_REGION
+AWS_S3_BUCKET_NAME=YOUR_BUCKET_NAME
+AWS_S3_ENDPOINT_URL=YOUR_B2_ENDPOINT
+```
+
+The application uses Boto3's S3-compatible interface to communicate with Backblaze B2.
+
+> Never commit `.env`, JWT secrets, database passwords, or B2 application keys to GitHub.
+
+---
+
+## 📊 API Response Strategy
+
+File endpoints return JSON rather than redirecting directly to object storage.
 
 Example:
 
@@ -816,11 +712,9 @@ Example:
 }
 ```
 
-This keeps the API behavior predictable for clients and Swagger/OpenAPI testing.
+This keeps API behavior predictable for frontend clients and Swagger/OpenAPI testing.
 
----
-
-# 📝 Logging
+## 📝 Logging
 
 Application logging is implemented using Python's standard logging framework.
 
@@ -830,34 +724,11 @@ Log format:
 timestamp | logger | filename | level | message
 ```
 
-Example:
+Sensitive information such as passwords, JWT tokens, storage credentials, and presigned URLs should not be logged.
 
-```text
-2026-09-04 12:30:20 | app | image_service.py | INFO | Image upload started
-```
+## 🔄 Database Migrations
 
-Logs are written to:
-
-```text
-app/logs/
-```
-
-Log files are excluded from Git through `.gitignore`.
-
-Sensitive information such as:
-
-- Passwords
-- JWT tokens
-- AWS secret keys
-- Presigned URLs
-
-is not intentionally logged.
-
----
-
-# 🔄 Database Migrations
-
-Alembic is used instead of directly calling SQLAlchemy `create_all()`.
+Alembic manages database schema changes.
 
 Create migration:
 
@@ -865,7 +736,7 @@ Create migration:
 alembic revision --autogenerate -m "description"
 ```
 
-Apply:
+Apply migrations:
 
 ```bash
 alembic upgrade head
@@ -877,7 +748,7 @@ Rollback:
 alembic downgrade -1
 ```
 
-Check:
+Check schema differences:
 
 ```bash
 alembic check
@@ -885,209 +756,96 @@ alembic check
 
 ---
 
-# 🔒 Security Design
+## 🧠 Engineering Highlights
 
-CloudImage follows several security principles:
-
-```text
-                Security Layers
-
-                     │
-        ┌────────────┴────────────┐
-        ▼                         ▼
- Authentication              Authorization
-        │                         │
-        ▼                         ▼
-       JWT                 User ownership checks
-        │                         │
-        └────────────┬────────────┘
-                     ▼
-              Input Validation
-                     │
-                     ▼
-             Image Validation
-                     │
-                     ▼
-              Private S3
-                     │
-                     ▼
-          Temporary Presigned URLs
-```
-
-Additional controls:
-
-- Environment-based configuration
-- Password hashing with Argon2
-- Private S3 bucket
-- Least-privilege IAM policy
-- File size limits
-- Image dimension limits
-- Pixel-count limits
-- Ownership validation
-- Database transactions
-- S3 cleanup on database failure
-
----
-
-# 🧠 Engineering Highlights
-
-This project demonstrates practical backend and cloud engineering concepts:
+This project demonstrates practical software engineering and cloud development concepts.
 
 ### API Architecture
 
 ```text
 Router
-  ↓
+  |
+  v
 Service
-  ↓
-Model / Storage
+  |
+  v
+Database / Storage
 ```
 
-Business logic is kept outside the API router wherever possible.
+Business logic is separated from API routing.
 
 ### Separation of Concerns
 
-```text
-API
- ↓
-Services
- ↓
-Storage / Database
-```
+- API layer handles HTTP requests and responses.
+- Service layer handles application logic.
+- Database layer manages persistent metadata.
+- Storage layer manages object storage operations.
 
-### Cloud Storage
+### Cloud Object Storage
 
-Uses AWS S3 rather than storing uploaded files directly on the application server.
-
-### Database-backed Metadata
-
-S3 stores binary objects while PostgreSQL stores searchable metadata.
+Binary image files are stored in Backblaze B2, while PostgreSQL stores searchable metadata.
 
 ### Deterministic Caching
 
-Transformation requests are converted into a stable hash so identical operations can reuse previous results.
+Identical transformation requests can reuse previously generated results using SHA3-256 hashes.
 
 ### Failure Cleanup
 
-If an S3 upload succeeds but the database transaction fails, the uploaded S3 object is removed to avoid orphaned objects.
+Storage and database operations include cleanup handling to reduce orphaned objects when operations fail.
+
+### Security
+
+JWT authentication, Argon2 password hashing, ownership checks, private object storage, and image validation protect application resources.
 
 ---
 
-# 📈 Version History
-
-The project is developed using semantic versioning.
+## 📈 Version History
 
 ```text
-v0.1.0
-Project foundation
-
-v0.2.0
-Authentication and user management
-
-v0.3.0
-Image upload and validation
-
-v0.4.0
-AWS S3 storage integration
-
-v0.5.0
-Image transformation pipeline
-
-v0.6.0
-Image management and transformation caching
-
-v0.7.0
-API regression and security validation
-
-v1.0.0
-Production-ready backend
+v0.1.0  Project foundation
+v0.2.0  Authentication and user management
+v0.3.0  Image upload and validation
+v0.4.0  Object storage integration
+v0.5.0  Image transformation pipeline
+v0.6.0  Image management and transformation caching
+v0.7.0  API regression and security validation
+v1.0.0  Full-stack deployment and cloud storage integration
 ```
 
----
+## 🛣️ Future Improvements
 
-# 🛣️ Roadmap
-
-Future development:
-
-- [ ] Automated pytest test suite
-- [ ] Docker containerization
-- [ ] Docker Compose development environment
-- [ ] GitHub Actions CI/CD
 - [ ] API rate limiting
-- [ ] Global exception handling
 - [ ] Redis caching
 - [ ] Background image processing
 - [ ] Celery task queue
 - [ ] Image optimization pipeline
-- [ ] React frontend
-- [ ] Image gallery dashboard
-- [ ] Before/after transformation preview
-- [ ] AWS cloud deployment
 - [ ] Monitoring and metrics
 - [ ] Production observability
-- [ ] Custom domain and HTTPS
+- [ ] Advanced image editing features
 
 ---
 
-# 🎯 Project Goals
+## 👨‍💻 Author
 
-CloudImage was designed to demonstrate how a real-world image processing backend can be built using:
+**Vidyanshu Kushwaha**
 
-```text
-Python
-+
-FastAPI
-+
-PostgreSQL
-+
-AWS S3
-+
-JWT
-+
-Pillow
-+
-SQLAlchemy
-+
-Alembic
-```
+B.Tech — Computer Science and Engineering, Data Science
 
-The focus is not only on image manipulation, but also on:
-
-- API architecture
-- Cloud storage
-- Authentication
-- Authorization
-- Database design
-- Caching
-- Security
-- Error handling
-- Logging
-- Testing
-- Production readiness
-
----
-
-# 👨‍💻 Author
-
-**Vidyanshu Kushawaha**
-
-B.Tech CSE — Data Science
+GitHub: [vidyanshu01](https://github.com/vidyanshu01)
 
 Interested in:
 
-- Machine Learning Engineering
-- Backend Engineering
-- Data Science
+- AI / Machine Learning Engineering
+- Python Backend Development
+- Generative AI
 - Cloud Engineering
 - MLOps
 
 ---
 
-# ⭐ If You Find This Project Useful
+## ⭐ Support
 
-Consider giving the repository a ⭐ on GitHub.
-
----
+If you find this project useful, consider giving the repository a ⭐ on GitHub.
 
 ## 📄 License
 
