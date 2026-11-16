@@ -5,6 +5,7 @@ from botocore.exceptions import ClientError
 
 from app.core.config import settings
 from app.core.logging import logger
+from botocore.config import Config
 
 
 class S3Storage:
@@ -15,7 +16,11 @@ class S3Storage:
             aws_access_key_id=settings.AWS_ACCESS_KEY_ID,
             aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
             region_name=settings.AWS_REGION,
-            endpoint_url=settings.AWS_S3_ENDPOINT_URL
+            endpoint_url=settings.AWS_S3_ENDPOINT_URL,
+            config=Config(
+                signature_version="s3v4",
+                s3={"addressing_style": "path"}
+            )
         )
 
         self.bucket = settings.AWS_S3_BUCKET_NAME
